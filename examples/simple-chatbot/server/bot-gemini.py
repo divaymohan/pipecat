@@ -22,6 +22,7 @@ import io
 import os
 import sys
 import wave
+from pathlib import Path
 
 import aiofiles
 import aiohttp
@@ -76,6 +77,20 @@ talking_frame = SpriteFrame(images=sprites)  # Animation sequence for when bot i
 
 # Create the recordings directory if it doesn't exist
 os.makedirs("recordings", exist_ok=True)
+
+
+async def remove_all_recordings():
+    """Remove all existing recording files from the recordings directory."""
+    recordings_dir = Path("recordings")
+    if recordings_dir.exists():
+        # Get all audio files from the recordings directory
+        audio_files = list(recordings_dir.glob("*.wav")) + list(recordings_dir.glob("*.mp3"))
+        for file in audio_files:
+            try:
+                os.remove(file)
+                print(f"Removed old recording: {file}")
+            except Exception as e:
+                print(f"Error removing file {file}: {e}")
 
 
 async def save_audio(audio: bytes, sample_rate: int, num_channels: int, name: str):
@@ -215,14 +230,6 @@ async def main():
         async def on_audio_data(buffer, audio, sample_rate, num_channels):
             await save_audio(audio, sample_rate, num_channels, "full")
 
-        @audiobuffer.event_handler("on_user_turn_audio_data")
-        async def on_user_turn_audio_data(buffer, audio, sample_rate, num_channels):
-            await save_audio(audio, sample_rate, num_channels, "user")
-
-        @audiobuffer.event_handler("on_bot_turn_audio_data")
-        async def on_bot_turn_audio_data(buffer, audio, sample_rate, num_channels):
-            await save_audio(audio, sample_rate, num_channels, "bot")
-
         @rtvi.event_handler("on_client_ready")
         async def on_client_ready(rtvi):
             await rtvi.set_bot_ready()
@@ -231,6 +238,7 @@ async def main():
 
         @transport.event_handler("on_first_participant_joined")
         async def on_first_participant_joined(transport, participant):
+            await remove_all_recordings()
             await audiobuffer.start_recording()
             await transport.capture_participant_transcription(participant["id"])
 

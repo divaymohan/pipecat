@@ -25,6 +25,8 @@ import os
 import subprocess
 from contextlib import asynccontextmanager
 from typing import Any, Dict
+from pathlib import Path
+from fastapi.responses import FileResponse
 
 import aiohttp
 from dotenv import load_dotenv
@@ -221,6 +223,62 @@ def get_status(pid: int):
     # Check the status of the subprocess
     status = "running" if proc[0].poll() is None else "finished"
     return JSONResponse({"bot_id": pid, "status": status})
+
+
+@app.get("/latest-recording")
+async def get_latest_recording():
+    """Get the latest recording file from the recordings directory.
+    
+    Returns:
+        FileResponse: The latest recording file as a downloadable audio file
+        
+    Raises:
+        HTTPException: If no recordings are found
+    """
+    recordings_dir = Path("recordings")
+    if not recordings_dir.exists():
+        raise HTTPException(status_code=404, detail="Recordings directory not found")
+        
+    # Get all audio files from the recordings directory
+    audio_files = list(recordings_dir.glob("*.wav")) + list(recordings_dir.glob("*.mp3"))
+    if not audio_files:
+        raise HTTPException(status_code=404, detail="No recording files found")
+        
+    # Get the latest file based on modification time
+    latest_file = max(audio_files, key=lambda x: x.stat().st_mtime)
+    
+    return FileResponse(
+        path=latest_file,
+        filename=latest_file.name,
+        media_type="audio/wav" if latest_file.suffix == ".wav" else "audio/mpeg"
+    )
+
+
+@app.post("/clear-recordings")
+async def clear_recordings():
+    """Remove all recording files from the recordings directory.
+    
+    Returns:
+        JSONResponse: A message indicating the result of the operation
+        
+    Raises:
+        HTTPException: If the recordings directory doesn't exist
+    """
+    recordings_dir = Path("recordings")
+    if not recordings_dir.exists():
+        raise HTTPException(status_code=404, detail="Recordings directory not found")
+    
+    # Get all audio files from the recordings directory
+    audio_files = list(recordings_dir.glob("*.wav")) + list(recordings_dir.glob("*.mp3"))
+    
+    # Remove all files
+    for file in audio_files:
+        try:
+            os.remove(file)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error removing file {file}: {e}")
+    
+    return JSONResponse({"message": f"Successfully removed {len(audio_files)} recording files"})
 
 
 if __name__ == "__main__":
